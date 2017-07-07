@@ -1,0 +1,351 @@
+---
+title: 
+output:
+  html_document: default
+---
+<html>
+<body>
+<h1 style="text-align: center;"> </h1>
+<h1 style="text-align: center">Text and Web Mining: <i><b>IMDb</b></i></h1>
+<h2 style="text-align: center">Data Mining II</h2>
+<br />
+<p style="text-align: center"> <i>Joel Sousa up201103870</i> </p>
+<p style="text-align: center"> <i>Luis Moreira up201102786</i> </p>
+<p style="text-align: center"> <i>Pavel Kajaba up201610230</i> </p>
+<p style="text-align: center"> <i>Pedro Osório up201102741</i> </p>
+<hr />
+
+<!-- Introduction -->
+<h4> Introduction </h4>
+<p> Over the years a lot of Data has been generated using the world wide web and so, as Computer Scientists, it is our job to manage all this information and, by using some Data Mining skills on Internet Movie Database (IMDb), to perform an exhaustive analysis of this Data in a way that will be helpful to determine whatever movie’s information a common user would like to see after an initial search. </p>
+
+<!-- Main tasks to accomplish -->
+<h4> Main tasks </h4>
+<p> During this assignment two main tasks were settled: </p>
+<ol>
+<li>Find basic information (web page, diretor, cast, etc.) of a movie based on a query string of the title.
+
+For this specific task our searcher function is getting the following information.
+<ul>
+<li> Name </li>
+<li> Description </li>
+<li> Directors </li>
+<li> Creators </li>
+<li> Cast </li>
+</ul>
+</li>
+<li>Given the IMDb ID of a movie, obtain the information on all reviews of this movie.</li>
+<li>Using the reviews information (text of the review plus the score), build a data set for learning a model that can predict the grade based on the text.</li>
+<li>Using the previous data set try a few prediction models and draw conclusions from this experimental comparison.</li>
+<li>Summarise the reviews of a movie.</li>
+</ol>
+<hr />
+<h4> Practical Work </h4>
+<h5> Searcher function </h5>
+<h6> Inital Setup </h6>
+<p>In this assignment we’ve used the following libraries:</p>
+``` {r setup_1, results="hide", message = FALSE, warning = FALSE, echo = TRUE }
+knitr::opts_chunk$set(error = TRUE)
+library(rvest)
+library(arules)
+library(XML)
+```
+<h6>Grabbing Movie's Information</h6>
+<p> Our first goal was to be able to submit a query on IMDb’s main form. After submitting the query we need to scrape up the html of IMDb and then navigate through each hyperlink on it using the rvest package to get the info of each movie listed on the movie’s result list. 
+
+We've found a way to set this right: We've noticed that by pressing “movies” on the sidebar of the IMDb website, we’re able to restrict the search only for movies, so a lot of misleading results related, for example to TV series, were discarded and so we’re able to reduce our result list. In terms of string matching, the IMDb website is ordering the movies result list by itself using some sort of string score related matchups and so we’re taking advantage over this feature and our list is already ordered by confidence, and in this case our confidence factor is string matching.
+
+<p>Our search fuction is the one presented bellow:</p>
+``` {r, results="hide", message = FALSE, warning = FALSE, echo = TRUE }
+searcher <- function(query,limit) {
+  ...
+}
+```
+<p> It's getting a query as a string and then is going to do the search for You on the IMDb website. Now lets take a look of what's inside our function: First, We've used the following code to perform the IMDb's form submission to obtain the result list. </p>
+``` {r, results="hide", message = FALSE, warning = FALSE, echo = TRUE }
+searcher <- function(query,limit) {
+  ...
+type <- "tt"
+imdbURL <- "http://www.imdb.com"
+movieList <- html_session(imdbURL)
+form <- html_form(movieList)[[1]]
+form <- set_values(form, q = query, s = type)
+response <- submit_form(movieList, form)
+responseURL <- response$url
+moviesUrlList <- paste(responseURL,"&ttype=ft&ref_=fn_ft",sep = "")
+  ...
+}
+```
+<p>We've settled a type <i>"tt"</i> (that we found it was being used on the form's html code). Then by using the rvest package we're able to submit our query and to obtain the URL of the result page and then stored on <i>moviesUrlList</i> variable. An example of a movie's URL from that list is:
+
+<p style="text-align: center"><i> www.imdb.com/title/tt0129387/?ref_=fn_ft_tt_1 </i></p>
+
+Where <i>ttxxxxxxx</i> is the movie ID, so to grab movie's Name and ID we've used the following code.
+</p>
+``` {r, results="hide", message = FALSE, warning = FALSE, echo = TRUE }
+searcher <- function(query,limit) {
+  ...
+movName <- read_html(moviesUrlList)
+moviesName <- movName %>%
+  html_nodes(".result_text") %>%
+  html_text(trim=T)
+  
+movID <- read_html(moviesUrlList)
+moviesID <- movID %>% 
+  html_nodes(".result_text") %>%
+  html_nodes("a") %>%
+  html_attr("href")
+...
+}
+```
+
+<p>After having all this information stored properly we've done the following procedure to grab movie's information mencioned above.</p>
+
+<p>Basically what we're going to do is to create an external file so we can print out all the info and see it properly with any text editor: if that file already exists, we first remove it and then print on it, otherwise we just print on it.
+
+For each movie's ID stored in <i>moviesID</i> list we've constructed the URL that points to each movie on our List and then we're able to navigate through it using rvest. So for each one of those movies we grab the information we need then we print out into the file mencioned above and also we've stored that info into a result list named: <i>queryResult</i>.
+
+The key factor that really improves our code's efficient is the <i>limit</i> variable: if it's not present our code will retrieve <b>all</b> movie's information, and this is a slow process if we get like <b>200 hits</b>. By using the limit factor we can limit the number of retrieved movies and so the process of retrieving movie's information will be much quicker.
+
+Here we present the final result as described on the previous sections.
+``` {r, results="hide", message = FALSE, warning = FALSE, echo = TRUE }
+searcher <- function(query,limit) {
+ type <- "tt"
+  imdbURL <- "http://www.imdb.com"
+  movieList <- html_session(imdbURL)
+  form <- html_form(movieList)[[1]]
+  form <- set_values(form, q = query, s = type)
+  response <- submit_form(movieList, form)
+  responseURL <- response$url
+  moviesUrlList <- paste(responseURL,"&ttype=ft&ref_=fn_ft",sep = "")
+  
+  movName <- read_html(moviesUrlList)
+  moviesName <- movName %>% 
+    html_nodes(".result_text") %>%
+    html_text(trim=T)
+  movID <- read_html(moviesUrlList)
+  moviesID <- movID %>% 
+    html_nodes(".result_text") %>% 
+    html_nodes("a") %>% 
+    html_attr("href")
+  
+  #Build URL for each movie and get all its info !
+  f <- "movies_info.txt"
+  if(!file.exists(f)) {
+    file.create(f, showWarnings = T)
+  } else {
+    file.remove(f)
+  }
+  index <- 1
+  queryResult <- c()
+  for(id in moviesID) {
+    movieURL <- read_html(paste(imdbURL,id,sep = ""))
+    #Movie's description
+    description <- movieURL %>%
+      html_nodes(xpath = '//div[@class="summary_text"]/text()[1]') %>%
+      html_text(trim=T)
+    #Movie's director
+    directors <- movieURL %>%
+      html_nodes(xpath = '//span[@itemprop="director"]') %>%
+      html_text(trim=T)
+    #Movie's creators
+    creators <- movieURL %>%
+      html_nodes(xpath = '//span[@itemprop="creator"]') %>%
+      html_text(trim=T)
+    #Movie's cast
+    cast <- movieURL %>%
+      html_nodes("#titleCast .itemprop span") %>%
+      html_text(trim=T)
+    #RESULT LIST
+    if(!missing(limit)) {
+      if(index <= limit) {
+        write("NAME", file = f, append = T)
+        write(moviesName[index], file = f, append = T)
+        write("DESCRIPTION", file = f, append = T)
+        write(description, file = f, append = T)
+        write("DIRECTORS", file = f, append = T)
+        write(directors, file = f, append = T)
+        write("CREATORS", file = f, append = T)
+        write(creators, file = f, append = T)
+        write("CAST", file = f, append = T)
+        write(cast, file = f, append = T)
+        write("--------------------------", file = f, append = T)
+        queryResult[[index]] = list(moviesName[index], description, directors, creators, cast)
+      }
+      else {
+        break
+      }
+    } else {
+      write("NAME", file = f, append = T)
+      write(moviesName[index], file = f, append = T)
+      write("DESCRIPTION", file = f, append = T)
+      write(description, file = f, append = T)
+      write("DIRECTORS", file = f, append = T)
+      write(directors, file = f, append = T)
+      write("CREATORS", file = f, append = T)
+      write(creators, file = f, append = T)
+      write("CAST", file = f, append = T)
+      write(cast, file = f, append = T)
+      write("--------------------------", file = f, append = T)
+      queryResult[[index]] = list(moviesName[index], description, directors, creators, cast)
+    }
+    index <- index + 1
+  }
+  if(!missing(limit)) {
+    if(limit > length(queryResult)){
+      sprintf("Max limit allowed: %d",length(queryResult))
+    } else {
+      for(i in 1:limit) {
+        print(queryResult[[i]])
+      }
+    }
+  } else {
+    print(queryResult)
+  }
+}
+```
+To test it out please run this script using the source button on RStudio and then by using the console type some movie that You like:
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+searcher("Jobs",1)
+```
+</p>
+<h5>Text Mining</h5>
+<h6>Initial Setup</h6>
+<p>In this part of the assignment we've defined a fixed query for submitting into IMDb and then retrieve all reviews of that specific movie to perform a Text Mining to determine if that movie was good or bad. First let's take a look at the inital setup:</p>
+``` {r setup_2, results="hide", message = FALSE, warning = FALSE, echo = TRUE }
+knitr::opts_chunk$set(error = TRUE)
+library(rvest)
+library(arules)
+library(XML)
+library(dplyr)
+library(wordcloud)
+library(tm)
+source("http://bioconductor.org/biocLite.R")
+biocLite("Rgraphviz")
+library(Rgraphviz)
+```
+<h6>Grabbing Movie's reviews</h6>
+<p>First we're going to set a query and by using the rvest package we can use the same process of the searcher function but this time by focus on user's reviews.</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+query<-"tt0120737"
+# Store web url
+imdbURL <- "http://www.imdb.com/title/"
+movieURL<-paste(imdbURL,query,sep="")
+movieURL
+```
+<p>By using this URL we can start looking for a way to retrieve movie's reviews. To accomplish this task we've tried several different ways but only one seems to work properly: on movie's reviews page we detect a <i>count</i> variable, and if we're able to set this variable right we could retrieve all those reviews. So to that what've done was: first we've scraped the main page of that specific movie for getting the value under the rate star, and this value it's <b>always</b> bigger than the <i>count</i> variable that was on movie's reviews page, so if we set the variable with that value, no matter what, the page will <b>always</b> retrieve all reviews, so we won't loose any important reviews, and by doing this we're able to retrieve all of them so then we could perform a Text Mining.
+
+So first we've opened an html session and went after the rating value under the star.</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+site <- html_session(movieURL)
+#Scrape the website for the movie rating
+n<- site %>% 
+  html_node(".imdbRating a") %>%
+  html_text(trim=T)
+n
+```
+<p>As You can see this value was returned as a String and has a lot of commas seperating all these numbers. This next code will parse the entire String and retrive the number we want as a numeric that it should be. And here it is.</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+aux<-gsub(",", ".", gsub("\\.", "", n))
+number_of_reviews<- as.numeric(gsub("\\.","", as.character(aux)))
+number_of_reviews
+```
+<p>Now let's construct step by step the URL that we want with that value settled on <i>count</i> variable.</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+reviewsLink <- paste(movieURL,"/reviews?count=",sep="")
+reviewsLink2 <- paste(reviewsLink,number_of_reviews,sep="")
+reviewsLink3<-  paste(reviewsLink2,"&start=0",sep="")
+reviewsLink3
+```
+<p>Aftet this has been done we could go after those text reviews and rating values. To accomplish this task we've wrote the folling code. We're going to show only one review because there are too many to present in this document, and only eight rating values for the same reason.</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+#Get Reviews
+rev <- read_html(reviewsLink3)
+review <- rev %>% 
+  html_nodes("#tn15content p") %>%
+  html_text(trim=T)
+review[23]
+#Get Ratings
+rat <- read_html(reviewsLink3)
+rating <- rat %>% 
+  html_nodes(xpath="//div/div/img/@alt") %>%
+  html_text(trim=T)
+head(rating,8)
+```
+<p>As You can see on our text there are a lot of undesirable characters ('\n','n',etc) and we need to get rid of them. To perform this text cleaning we're wrote the folling code:</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+# Text Cleaning
+docs <- Corpus(VectorSource(review))
+docs <- tm_map(docs, removePunctuation)
+docs <- tm_map(docs, removeNumbers)
+rem <- function(x) gsub('[[:space:]|[:punct:]]+', ' ', x)
+docs <- tm_map(docs, content_transformer(rem))
+rem <- function(x) gsub('<[a-z]*>', '', x)
+docs <- tm_map(docs, content_transformer(rem))
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+docs <- tm_map(docs, toSpace, "/")
+docs <- tm_map(docs, toSpace, "@")
+docs <- tm_map(docs, toSpace, "\\|")
+docs <- tm_map(docs, toSpace, "<[a-z]*>")
+docs <- tm_map(docs, toSpace, "[[a-z0-9]*]")
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removeWords, stopwords("english"))
+docs <- tm_map(docs, stripWhitespace)
+docs <- tm_map(docs, stemDocument)
+inspect(docs[23])
+```
+<p>Some of those words have got distorted but we can still analyse them because important words like 'good', 'bad', 'worst', that usually defines the movie as a good or a bad movie, there're still there so we can perform our analysis straight away. First we've created a matrix that has n rows with all the words tha have been found on user's reviews. Then for each word we're going to show the frequency of it.</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d,20)
+```
+<p>In our top 20 most used words we can find words like <b>good</b>, <b>great</b> and <b>best</b>. All these are a good indicative of a good movie, but let's do some word correlation and try to find what they realy mean. First we're going to present our wordcloud plot.</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+set.seed(1234)
+wordcloud(words = d$word, freq = d$freq, min.freq = 2000, max.words=200, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+```
+<p> Wen can see on this plot some of the words that we've mencioned above. So now let's do some word correlation. Let's try for example the word <b>good</b> (that is present on our plot).</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+findAssocs(dtm, terms = "good", corlimit = 0.3)
+```
+<p> It's correlated to the word "like". But maybe that's not to much information to say that this is actually a good movie. So we've tried the word <b>great</b> (that is also present on our plot). Usually when we use "great" it's beacause we want to describe something as "great", so let's find out what is that.</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+findAssocs(dtm, terms = "great", corlimit = 0.3)
+```
+<p> No results were found so we've low down the <i>corlimit</i> value to <b>0.2</b>.</p>
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+findAssocs(dtm, terms = "great", corlimit = 0.2)
+```
+<p>On top of those words there it is: <b>movi</b> also known as <b>movie</b>! So now we have a possible set of this movie's rate.</p>
+<ol>
+<li>great movie</li>
+<li>great story</li>
+<li>great film</li>
+</ol>
+<p>We've done only one wordcloud because of one reason: we've tested quite a lot of movies and all of them have different rating's and reviews's length, so both arrays had different lengths and because of that we've decided to choose a good movie and proove that by using web and text mining we could define this as movie as good. We've also tried an example of a bad movie and actually the result was bad as well.</p>
+<p>In order to better visualize the text mining/analysis we've done some statistcal work including to create some charts so it becames easier to understand our text mining. So by using the previous dataframe (that includes all words used by users, and each word has a frequency value settled) we've created a bar plot that shows the top 20 most common words in all reviews. Then we're going to present a graph that shows all word's correlation but to show only the most important ones we've settled the <i>correlation factor</i> to <b>0.27</b>.</p>
+
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+barplot(d[1:20,]$freq, las = 2, names.arg = d[1:20,]$word,
+        col ="lightblue", main ="Most Frequent Words",
+        ylab = "Word Frequencies")
+```
+
+``` {r, results="show", message = FALSE, warning = FALSE, echo = TRUE }
+freq.terms <- findFreqTerms(dtm, lowfreq = 2000)
+term.freq <- rowSums(as.matrix(dtm))
+term.freq <- subset(term.freq, term.freq >= 2000)
+df <- data.frame(term = names(term.freq), freq = term.freq)
+plot(dtm, term = freq.terms, corThreshold = 0.27, weighting = F)
+```
+<p>On this graph if we look closer we can see a connection between <b>movi</b> and <b>great</b> as we've shown before.</p>
+
+<h4>Conclusion</h4>
+<p>During this assignment, considering what we've done, we've used a lot of both text and web mining and we've learned how to process data in order to retrieve pernitent information as for exemple by telling if some movie, book or whatever is good or bad by using theses tools that text and web mining provide us.
+
+We hope that our work presented here is clearly and self-explanatory so every detail left no doubts.</p>
+</body>
+</html>
